@@ -66,12 +66,12 @@ jobs:
             GIT_MESSAGE=${{ steps.git.outputs.message }}
             BUILD_TIME=${{ steps.git.outputs.build_time }}
 
-      - name: Trigger Render Deploy
+      - name: Trigger Deploy
         env:
           NETCORE_DEPLOY_HOOK: ${{ secrets.NETCORE_DEPLOY_HOOK }}
         run: |
           if [ -n "$NETCORE_DEPLOY_HOOK" ]; then
-            echo "Triggering Render deploy..."
+            echo "Triggering deploy..."
             curl -v -X POST "$NETCORE_DEPLOY_HOOK"
           else
             echo "No NETCORE_DEPLOY_HOOK provided, skipping deploy"
