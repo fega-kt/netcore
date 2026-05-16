@@ -28,4 +28,4 @@ Generated build info:
 ${content}`);
 
 fs.appendFileSync(".env", content);
-console.log(`✅ appended build info to ${target}`);
+console.log(`✅ appended build info to .env`);
