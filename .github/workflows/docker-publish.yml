@@ -1,0 +1,44 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get git info
+        id: git
+        run: |
+          echo "commit=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          echo "author=$(git log -1 --pretty=format:'%an')" >> $GITHUB_OUTPUT
+          echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_OUTPUT
+          echo "message=$(git log -1 --pretty=format:'%s')" >> $GITHUB_OUTPUT
+          echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}:latest
+          build-args: |
+            GIT_COMMIT=${{ steps.git.outputs.commit }}
+            GIT_AUTHOR=${{ steps.git.outputs.author }}
+            GIT_BRANCH=${{ steps.git.outputs.branch }}
+            GIT_MESSAGE=${{ steps.git.outputs.message }}
+            BUILD_TIME=${{ steps.git.outputs.build_time }}

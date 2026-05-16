@@ -17,7 +17,6 @@ builder.Services.AddSwaggerGen(c =>
     c.SwaggerDoc("v1", new() { Title = "File Converter API", Version = "v1" });
 });
 
-builder.Services.AddHealthChecks();
 builder.Services.AddScoped<IConversionService, ConversionService>();
 
 builder.WebHost.ConfigureKestrel(opts =>
@@ -38,6 +37,5 @@ app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "File Conver
 
 app.UseHttpsRedirection();
 app.MapControllers();
-app.MapHealthChecks("/health");
 
 app.Run();
