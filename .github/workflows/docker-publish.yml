@@ -25,20 +25,20 @@ jobs:
           echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_OUTPUT
           echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
 
-          # 👉 Lấy FULL commit message + body thật
+          # 👉 Lấy FULL commit message + body
           MESSAGE=$(git log -1 --pretty=format:'%B')
 
-          # fallback nếu rỗng (hiếm nhưng nên có)
+          # fallback nếu rỗng
           if [ -z "$MESSAGE" ]; then
             MESSAGE="${{ github.event.head_commit.message }}"
           fi
 
-          # flatten để không vỡ Docker build-arg
+          # flatten để không lỗi Docker
           MESSAGE=$(echo "$MESSAGE" | tr '\n' ' ' | sed 's/"/\\"/g')
 
           echo "message=$MESSAGE" >> $GITHUB_OUTPUT
 
-      - name: Print debug info
+      - name: Debug info
         run: |
           echo "Commit: ${{ steps.git.outputs.commit }}"
           echo "Branch: ${{ steps.git.outputs.branch }}"
@@ -66,12 +66,13 @@ jobs:
             GIT_MESSAGE=${{ steps.git.outputs.message }}
             BUILD_TIME=${{ steps.git.outputs.build_time }}
 
-      - name: Trigger Deploy
-        if: ${{ secrets.NETCORE_DEPLOY_HOOK != '' }}
+      - name: Trigger Render Deploy
+        env:
+          NETCORE_DEPLOY_HOOK: ${{ secrets.NETCORE_DEPLOY_HOOK }}
         run: |
-          echo "Triggering Render deploy..."
-          curl -v -X POST ${{ secrets.NETCORE_DEPLOY_HOOK }}
-
-      - name: Skip deploy (no hook)
-        if: ${{ secrets.NETCORE_DEPLOY_HOOK == '' }}
-        run: echo "No NETCORE_DEPLOY_HOOK provided, skipping deploy"
+          if [ -n "$NETCORE_DEPLOY_HOOK" ]; then
+            echo "Triggering Render deploy..."
+            curl -v -X POST "$NETCORE_DEPLOY_HOOK"
+          else
+            echo "No NETCORE_DEPLOY_HOOK provided, skipping deploy"
+          fi
