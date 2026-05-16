@@ -21,20 +21,12 @@ jobs:
         id: git
         run: |
           echo "commit=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
-          echo "author=$(git log -1 --pretty=format:'%an')" >> $GITHUB_OUTPUT
+          echo "author=$(git log -1 --pretty=%an)" >> $GITHUB_OUTPUT
           echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_OUTPUT
           echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
 
-          # 👉 Lấy FULL commit message + body
-          MESSAGE=$(git log -1 --pretty=format:'%B')
-
-          # fallback nếu rỗng
-          if [ -z "$MESSAGE" ]; then
-            MESSAGE="${{ github.event.head_commit.message }}"
-          fi
-
-          # flatten để không lỗi Docker
-          MESSAGE=$(echo "$MESSAGE" | tr '\n' ' ' | sed 's/"/\\"/g')
+          # 👉 QUAN TRỌNG: giống NodeJS
+          MESSAGE=$(git log -1 --pretty=%s)
 
           echo "message=$MESSAGE" >> $GITHUB_OUTPUT
 
