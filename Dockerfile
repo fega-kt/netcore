@@ -13,7 +13,7 @@ RUN dotnet restore
 
 COPY . .
 
-RUN printf 'GIT_COMMIT=%s\nGIT_AUTHOR=%s\nGIT_BRANCH=%s\nGIT_MESSAGE=%s\nBUILD_TIME=%s\n' \
+RUN printf 'GIT_COMMIT=%s\nGIT_AUTHOR=%s\nGIT_BRANCH=%s\nGIT_MESSAGE="%s"\nBUILD_TIME=%s\n' \
     "$GIT_COMMIT" "$GIT_AUTHOR" "$GIT_BRANCH" "$GIT_MESSAGE" "$BUILD_TIME" > .env
 
 RUN dotnet publish -c Release -o /app/publish --no-restore \
