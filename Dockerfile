@@ -13,15 +13,23 @@ RUN dotnet restore
 
 COPY . .
 
-RUN printf 'GIT_COMMIT=%s\nGIT_AUTHOR=%s\nGIT_BRANCH=%s\nGIT_MESSAGE="%s"\nBUILD_TIME=%s\n' \
-    "$GIT_COMMIT" "$GIT_AUTHOR" "$GIT_BRANCH" "$GIT_MESSAGE" "$BUILD_TIME" > .env
-
-RUN dotnet publish -c Release -o /app/publish --no-restore \
-    && cp .env /app/publish/.env
+RUN dotnet publish -c Release -o /app/publish --no-restore
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
+
+ARG GIT_COMMIT=unknown
+ARG GIT_AUTHOR=unknown
+ARG GIT_BRANCH=unknown
+ARG GIT_MESSAGE=unknown
+ARG BUILD_TIME=unknown
+
+ENV GIT_COMMIT=$GIT_COMMIT
+ENV GIT_AUTHOR=$GIT_AUTHOR
+ENV GIT_BRANCH=$GIT_BRANCH
+ENV GIT_MESSAGE=$GIT_MESSAGE
+ENV BUILD_TIME=$BUILD_TIME
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
