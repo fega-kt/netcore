@@ -4,7 +4,6 @@ obj/
 .vscode/
 *.user
 *.suo
-.git/
 .gitignore
 **/*.md
 Dockerfile

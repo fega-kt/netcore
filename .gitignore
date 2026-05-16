@@ -4,6 +4,7 @@ obj/
 
 # Environment & secrets
 .env
+buildinfo.env
 *.user
 
 # ASP.NET
