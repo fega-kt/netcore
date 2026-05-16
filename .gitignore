@@ -1,0 +1,21 @@
+# Build
+bin/
+obj/
+
+# Environment & secrets
+.env
+*.user
+
+# ASP.NET
+appsettings.Development.json
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+
+# OS
+.DS_Store
+Thumbs.db
