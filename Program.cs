@@ -1,9 +1,22 @@
 using DotNetEnv;
+using FileConverter.Models;
 using FileConverter.Services;
 using Syncfusion.Licensing;
 
 Env.Load();
+var startedAt = DateTime.UtcNow;
+
+var gitLines = File.Exists(".gitinfo") ? File.ReadAllLines(".gitinfo") : [];
+var appInfo = new AppInfo(
+    StartedAt: startedAt,
+    Commit:  gitLines.ElementAtOrDefault(0) ?? "local",
+    Author:  gitLines.ElementAtOrDefault(1) ?? "local",
+    Message: gitLines.ElementAtOrDefault(2) ?? "local",
+    Branch:  gitLines.ElementAtOrDefault(3) ?? "local"
+);
+
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddSingleton(appInfo);
 
 // Đăng ký Syncfusion license — lấy miễn phí tại syncfusion.com/products/communitylicense
 var syncfusionKey = Environment.GetEnvironmentVariable("SYNCFUSION_LICENSE_KEY") ?? "";

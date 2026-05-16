@@ -1,20 +1,25 @@
+using FileConverter.Models;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FileConverter.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class HealthController : ControllerBase
+public class HealthController(AppInfo appInfo) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public IActionResult Get()
+    public IActionResult Get() => Ok(new
     {
-        return Ok(new
+        result = new
         {
-            status = "healthy",
+            appInfo.Commit,
+            appInfo.Author,
+            appInfo.Branch,
+            appInfo.Message,
+            buildTime = appInfo.StartedAt,
+            uptime = (DateTime.UtcNow - appInfo.StartedAt).TotalSeconds,
             timestamp = DateTime.UtcNow,
-            version = "1.0.0"
-        });
-    }
+        }
+    });
 }

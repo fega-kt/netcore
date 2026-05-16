@@ -6,6 +6,12 @@ COPY *.csproj .
 RUN dotnet restore
 
 COPY . .
+
+# Ghi git info ra file: commit, author, message, branch (mỗi dòng 1 field)
+RUN git log -1 --format="%H%n%aN%n%s" > /src/.gitinfo \
+    && git rev-parse --abbrev-ref HEAD >> /src/.gitinfo \
+    || printf 'unknown\nunknown\nunknown\nunknown\n' > /src/.gitinfo
+
 RUN dotnet publish -c Release -o /app/publish --no-restore
 
 # Runtime stage
@@ -27,6 +33,7 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV ASPNETCORE_URLS=http://+:8080
 
 COPY --from=build /app/publish .
+COPY --from=build /src/.gitinfo .gitinfo
 
 RUN useradd -m appuser && chown -R appuser /app
 USER appuser
