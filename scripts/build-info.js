@@ -23,6 +23,9 @@ GIT_MESSAGE=${safe(run("git log -1 --pretty=format:%s"))}
 BUILD_TIME=${new Date().toISOString()}
 `;
 
-const target = process.argv[2] ?? ".env";
-fs.appendFileSync(target, content);
+console.log(`
+Generated build info:
+${content}`);
+
+fs.appendFileSync(".env", content);
 console.log(`✅ appended build info to ${target}`);

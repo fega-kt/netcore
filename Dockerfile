@@ -10,10 +10,10 @@ COPY . .
 # Generate build info (nodejs + git đều có sẵn trong sdk image)
 RUN apt-get update -qq && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
-RUN node scripts/build-info.js buildinfo.env
+RUN node scripts/build-info.js
 
 RUN dotnet publish -c Release -o /app/publish --no-restore \
-    && cp buildinfo.env /app/publish/
+    && cp .env /app/publish/.env
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
