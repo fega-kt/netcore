@@ -17,7 +17,7 @@ public class HealthController(AppInfo appInfo) : ControllerBase
             appInfo.Author,
             appInfo.Branch,
             appInfo.Message,
-            buildTime = appInfo.StartedAt,
+            buildTime = appInfo.BuildTime,
             uptime = (DateTime.UtcNow - appInfo.StartedAt).TotalSeconds,
             timestamp = DateTime.UtcNow,
         }

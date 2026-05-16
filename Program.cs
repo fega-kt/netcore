@@ -4,16 +4,20 @@ using FileConverter.Services;
 using Syncfusion.Licensing;
 
 Env.Load();
+Env.Load("buildinfo.env");
 var startedAt = DateTime.UtcNow;
 
-var gitLines = File.Exists(".gitinfo") ? File.ReadAllLines(".gitinfo") : [];
 var appInfo = new AppInfo(
     StartedAt: startedAt,
-    Commit:  gitLines.ElementAtOrDefault(0) ?? "local",
-    Author:  gitLines.ElementAtOrDefault(1) ?? "local",
-    Message: gitLines.ElementAtOrDefault(2) ?? "local",
-    Branch:  gitLines.ElementAtOrDefault(3) ?? "local"
+    Commit: env("GIT_COMMIT") ?? env("RENDER_GIT_COMMIT") ?? "local",
+    Author: env("GIT_AUTHOR") ?? "unknown",
+    Branch: env("GIT_BRANCH") ?? env("RENDER_GIT_BRANCH") ?? "local",
+    Message: env("GIT_MESSAGE") ?? "unknown",
+    BuildTime: env("BUILD_TIME") is { } bt && DateTime.TryParse(bt, out var bdt) ? bdt : startedAt
 );
+
+static string? env(string key) =>
+    Environment.GetEnvironmentVariable(key) is { Length: > 0 } v ? v : null;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton(appInfo);
