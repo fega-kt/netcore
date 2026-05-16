@@ -15,7 +15,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # quan trọng để lấy full commit
+          fetch-depth: 0
 
       - name: Get git info
         id: git
@@ -25,9 +25,24 @@ jobs:
           echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_OUTPUT
           echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
 
-          # Lấy full commit message + flatten (tránh lỗi Docker)
-          MESSAGE=$(git log -1 --pretty=format:'%B' | tr '\n' ' ' | sed 's/"/\\"/g')
+          # 👉 Lấy FULL commit message + body thật
+          MESSAGE=$(git log -1 --pretty=format:'%B')
+
+          # fallback nếu rỗng (hiếm nhưng nên có)
+          if [ -z "$MESSAGE" ]; then
+            MESSAGE="${{ github.event.head_commit.message }}"
+          fi
+
+          # flatten để không vỡ Docker build-arg
+          MESSAGE=$(echo "$MESSAGE" | tr '\n' ' ' | sed 's/"/\\"/g')
+
           echo "message=$MESSAGE" >> $GITHUB_OUTPUT
+
+      - name: Print debug info
+        run: |
+          echo "Commit: ${{ steps.git.outputs.commit }}"
+          echo "Branch: ${{ steps.git.outputs.branch }}"
+          echo "Message: ${{ steps.git.outputs.message }}"
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -50,3 +65,13 @@ jobs:
             GIT_BRANCH=${{ steps.git.outputs.branch }}
             GIT_MESSAGE=${{ steps.git.outputs.message }}
             BUILD_TIME=${{ steps.git.outputs.build_time }}
+
+      - name: Trigger Deploy
+        if: ${{ secrets.NETCORE_DEPLOY_HOOK != '' }}
+        run: |
+          echo "Triggering Render deploy..."
+          curl -v -X POST ${{ secrets.NETCORE_DEPLOY_HOOK }}
+
+      - name: Skip deploy (no hook)
+        if: ${{ secrets.NETCORE_DEPLOY_HOOK == '' }}
+        run: echo "No NETCORE_DEPLOY_HOOK provided, skipping deploy"
