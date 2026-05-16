@@ -2,15 +2,19 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
+ARG GIT_COMMIT=unknown
+ARG GIT_AUTHOR=unknown
+ARG GIT_BRANCH=unknown
+ARG GIT_MESSAGE=unknown
+ARG BUILD_TIME=unknown
+
 COPY *.csproj .
 RUN dotnet restore
 
 COPY . .
 
-# Generate build info (nodejs + git đều có sẵn trong sdk image)
-RUN apt-get update -qq && apt-get install -y --no-install-recommends nodejs \
-    && rm -rf /var/lib/apt/lists/*
-RUN node scripts/build-info.js
+RUN printf 'GIT_COMMIT=%s\nGIT_AUTHOR=%s\nGIT_BRANCH=%s\nGIT_MESSAGE=%s\nBUILD_TIME=%s\n' \
+    "$GIT_COMMIT" "$GIT_AUTHOR" "$GIT_BRANCH" "$GIT_MESSAGE" "$BUILD_TIME" > .env
 
 RUN dotnet publish -c Release -o /app/publish --no-restore \
     && cp .env /app/publish/.env
