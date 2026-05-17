@@ -35,6 +35,18 @@ else
 app.UseSwagger();
 app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "File Converter API v1"));
 
+app.Use(async (ctx, next) =>
+{
+    var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    var forwarded = ctx.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+    var clientIp = forwarded?.Split(',')[0].Trim() ?? ip;
+    var ua = ctx.Request.Headers.UserAgent.ToString() is { Length: > 0 } s ? s : "-";
+    var logger = ctx.RequestServices.GetRequiredService<ILogger<Program>>();
+    logger.LogInformation("{Method} {Path} — ip={IP} ua={UA}",
+        ctx.Request.Method, ctx.Request.Path, clientIp, ua);
+    await next();
+});
+
 app.UseHttpsRedirection();
 app.MapControllers();
 
