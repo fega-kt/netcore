@@ -12,6 +12,7 @@ public class HealthController : ControllerBase
     private static readonly DateTime StartedAt = DateTime.UtcNow;
 
     [HttpGet]
+    [HttpHead]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public IActionResult Get() => Ok(new
     {
