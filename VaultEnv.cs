@@ -8,8 +8,8 @@ namespace FileConverter;
 /// của tiến trình — không ghi file .env. Môi trường lấy từ biến <c>VAULT_ENV</c> (launchSettings đặt sẵn), hoặc
 /// môi trường duy nhất trong <c>envs</c>.
 ///
-/// Token Vault lấy theo thứ tự: biến <c>VAULT_TOKEN</c> → file <c>~/.vault-token</c> (cũng là file lệnh <c>vault login</c> ghi)
-/// → hỏi trên console (dán token, hoặc đăng nhập userpass) rồi lưu token vào <c>~/.vault-token</c> để lần chạy sau (dotnet watch) không hỏi lại.
+/// Token Vault lấy theo thứ tự: biến <c>VAULT_TOKEN</c> → token đã giữ trong RAM (VaultTokenCache, mất khi đăng xuất / tắt máy)
+/// → hỏi trên console (dán token, hoặc đăng nhập userpass). Không bao giờ ghi token xuống đĩa.
 ///
 /// Trên server không có <c>.vault.json</c> trong image (đã loại ở .dockerignore) nên bỏ qua; secret do up.sh ghi ra .env.
 /// Biến đã có sẵn trong môi trường không bị ghi đè.
@@ -17,7 +17,6 @@ namespace FileConverter;
 public static class VaultEnv
 {
     private const string ConfigFile = ".vault.json";
-    private static readonly string TokenFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".vault-token");
 
     private sealed record VaultConfig(string? Addr, Dictionary<string, string>? Envs);
 
@@ -57,10 +56,10 @@ public static class VaultEnv
             if (token is null) return;
 
             var secrets = FetchSecrets(http, addr, secretPath, token);
-            if (secrets is null && Environment.GetEnvironmentVariable("VAULT_TOKEN") is null && File.Exists(TokenFile))
+            if (secrets is null && Environment.GetEnvironmentVariable("VAULT_TOKEN") is null && VaultTokenCache.Get(addr) is not null)
             {
                 // Token đã lưu hết hạn / bị thu hồi: đăng nhập lại một lần
-                File.Delete(TokenFile);
+                VaultTokenCache.Remove(addr);
                 token = ResolveToken(http, addr);
                 if (token is not null) secrets = FetchSecrets(http, addr, secretPath, token);
             }
@@ -89,18 +88,19 @@ public static class VaultEnv
     {
         var token = Environment.GetEnvironmentVariable("VAULT_TOKEN");
         if (!string.IsNullOrWhiteSpace(token)) return token.Trim();
-        if (File.Exists(TokenFile)) return File.ReadAllText(TokenFile).Trim();
+        var cached = VaultTokenCache.Get(addr);
+        if (!string.IsNullOrEmpty(cached)) return cached;
 
         if (Console.IsInputRedirected)
         {
-            Warn("Chưa có token Vault: đặt VAULT_TOKEN hoặc chạy `vault login` (tạo ~/.vault-token)");
+            Warn("Chưa có token Vault: đặt VAULT_TOKEN, hoặc chạy trong console để đăng nhập");
             return null;
         }
         Console.WriteLine("[vault] Đăng nhập Vault bằng: 1) Token  2) Userpass");
         Console.Write("[vault] Chọn (1/2): ");
         token = Console.ReadLine()?.Trim() == "1" ? PromptToken(http, addr) : LoginUserpass(http, addr);
-        // Lưu lại để lần chạy sau (dotnet watch khởi động lại) không phải hỏi
-        if (token is not null) File.WriteAllText(TokenFile, token);
+        // Giữ trong RAM để lần chạy sau (dotnet watch khởi động lại) không phải hỏi; tắt máy / đăng xuất là mất
+        if (token is not null && !VaultTokenCache.Set(addr, token)) Warn("Máy này không giữ được token trong RAM — lần sau sẽ hỏi lại");
         return token;
     }
 
