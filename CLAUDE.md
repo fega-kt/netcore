@@ -9,7 +9,7 @@ Commit messages should be concise and written in the author's own voice.
 ## Commands
 
 ```bash
-dotnet run          # run locally (port 5000/5001 per launchSettings.json)
+dotnet run          # run locally (http profile: http://localhost:5082 — override with --urls)
 dotnet build        # build only
 dotnet watch        # hot reload
 
@@ -28,7 +28,7 @@ Required env vars:
 Local secrets come from Vault directly — `VaultEnv.Load()` (called at the top of `Program.cs`) reads `.vault.json` (committed, same format as the backend), picks the env from `VAULT_ENV` (set to `file-converter-dev` in `launchSettings.json`) and puts the secrets into the process environment. No `.env` is written, no Node tooling needed:
 
 ```bash
-dotnet run --launch-profile http     # or: dotnet watch run --launch-profile http → http://localhost:5035/swagger
+dotnet run --launch-profile http     # or: dotnet watch run --launch-profile http → http://localhost:5082/swagger
 ```
 
 Vault token, in order: `VAULT_TOKEN` env var → token kept in RAM by `VaultTokenCache` → interactive prompt on the console (paste a token, or log in with userpass). The token is never written to disk: on Windows it lives in a volatile registry key (`HKCU\Software\Zhizhu\VaultTokens`, memory only), on Linux in `$XDG_RUNTIME_DIR` (tmpfs) — both are gone after logoff / reboot, like vault-start; elsewhere it is not cached. Variables already in the environment (or loaded from a local `.env` by DotNetEnv) are not overwritten. Success is logged in green; any failure (missing or bad `.vault.json`, no token, wrong path, Vault unreachable) is logged in red and the app keeps running — the values may still come from a local `.env`.
