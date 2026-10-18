@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "FileConverter (http)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/bin/Debug/net8.0/FileConverter.dll",
+      "cwd": "${workspaceFolder}",
+      // Lấy ASPNETCORE_ENVIRONMENT, VAULT_ENV, cổng 5082 từ profile "http" trong launchSettings.json
+      "launchSettingsProfile": "http",
+      // Terminal thật (không phải Debug Console) để nhập được token / tài khoản Vault khi chưa có token trong RAM
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    }
+  ]
+}

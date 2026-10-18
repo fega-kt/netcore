@@ -12,7 +12,11 @@ appsettings.Development.json
 
 # IDE
 .vs/
-.vscode/
+.vscode/*
+# Cấu hình F5 dùng chung
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/extensions.json
 .idea/
 *.suo
 *.user
