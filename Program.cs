@@ -1,8 +1,11 @@
 using DotNetEnv;
+using FileConverter;
 using FileConverter.Services;
 using Syncfusion.Licensing;
 
 Env.Load();
+// Chạy local: lấy secret từ Vault theo .vault.json (không ghi .env); server không có file này nên bỏ qua
+VaultEnv.Load();
 
 var builder = WebApplication.CreateBuilder(args);
 
