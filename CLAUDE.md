@@ -37,7 +37,7 @@ Vault token, in order: `VAULT_TOKEN` env var → token kept in RAM by `VaultToke
 
 ## Deploy
 
-Same flow as the backend: `.github/workflows/deploy.yml` runs on every push to `main` — builds the image, pushes `ghcr.io/fega-kt/netcore:latest` + `:sha-<commit>`, then SSHs to the server through Cloudflare Access and runs `VAULT_TOKEN=… APP_IMAGE=…:sha-<commit> bash up.sh` in the `file-converter/` directory of the `zhizhu-server-deploy` repo (`up.sh` fetches secrets from Vault `secret/zhizhu/file-converter`, writes `.env`, pulls and recreates `zhizhu-file-converter`).
+Same flow as the backend: `.github/workflows/deploy.yml` runs on every push to `main` — builds the image, pushes `ghcr.io/fega-kt/netcore:latest` + `:sha-<commit>`, then SSHs to the server through Cloudflare Access and runs `VAULT_TOKEN=… APP_IMAGE=…:latest bash up.sh` (the `:sha-<commit>` tag stays available to pin or roll back) in the `file-converter/` directory of the `zhizhu-server-deploy` repo (`up.sh` fetches secrets from Vault `secret/zhizhu/file-converter`, writes `.env`, pulls and recreates `zhizhu-file-converter`).
 
 Repository secrets required: `SERVER_SSH_KEY`, `SERVER_HOST`, `SERVER_USER`, `SERVER_DEPLOY_PATH` (e.g. `/opt/zhizhu/file-converter`), `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`, `GHCR_PAT` (read:packages), `VAULT_TOKEN`. Environment `production` must exist.
 

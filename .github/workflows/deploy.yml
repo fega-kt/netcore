@@ -94,7 +94,8 @@ jobs:
         env:
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-          APP_IMAGE: ${{ env.IMAGE }}:sha-${{ github.sha }}
+          # Giống backend: chạy bằng tag :latest (docker ps gọn). Tag sha-<commit> vẫn được push để pin / quay lại bản cũ khi cần
+          APP_IMAGE: ${{ env.IMAGE }}:latest
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} bash <<ENDSSH
             # Dừng ngay khi login/up.sh lỗi, để job báo fail đúng thay vì chỉ lấy exit code của lệnh cuối
