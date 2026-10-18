@@ -20,10 +20,28 @@ No test project currently exists.
 
 ## Environment
 
-Copy `.env.example` to `.env` and fill in values before running locally. `DotNetEnv` loads `.env` automatically at startup.
+`DotNetEnv` loads `.env` automatically at startup; real environment variables work too.
 
 Required env vars:
-- `SYNCFUSION_LICENSE_KEY` — get free community license at syncfusion.com/products/communitylicense
+- `SYNCFUSION_LICENSE_KEY` — Syncfusion Community license key generated for the library version in use (33.x). Missing / wrong key → PDFs get a watermark.
+
+Local secrets come from Vault directly — `VaultEnv.Load()` (called at the top of `Program.cs`) reads `.vault.json` (committed, same format as the backend), picks the env from `VAULT_ENV` (set to `file-converter-dev` in `launchSettings.json`) and puts the secrets into the process environment. No `.env` is written, no Node tooling needed:
+
+```bash
+dotnet run --launch-profile http     # or: dotnet watch run --launch-profile http → http://localhost:5035/swagger
+```
+
+Vault token, in order: `VAULT_TOKEN` env var → token kept in RAM by `VaultTokenCache` → interactive prompt on the console (paste a token, or log in with userpass). The token is never written to disk: on Windows it lives in a volatile registry key (`HKCU\Software\Zhizhu\VaultTokens`, memory only), on Linux in `$XDG_RUNTIME_DIR` (tmpfs) — both are gone after logoff / reboot, like vault-start; elsewhere it is not cached. Variables already in the environment (or loaded from a local `.env` by DotNetEnv) are not overwritten. If Vault is unreachable the app still starts and logs why.
+
+On the server the image has no `.vault.json` (excluded in `.dockerignore`), so `VaultEnv` is a no-op and secrets come from the `.env` written by `up.sh`. Without Vault access locally: `cp .env.example .env` and fill in the key by hand.
+
+## Deploy
+
+Same flow as the backend: `.github/workflows/deploy.yml` runs on every push to `main` — builds the image, pushes `ghcr.io/fega-kt/netcore:latest` + `:sha-<commit>`, then SSHs to the server through Cloudflare Access and runs `VAULT_TOKEN=… APP_IMAGE=…:sha-<commit> bash up.sh` in the `file-converter/` directory of the `zhizhu-server-deploy` repo (`up.sh` fetches secrets from Vault `secret/zhizhu/file-converter`, writes `.env`, pulls and recreates `zhizhu-file-converter`).
+
+Repository secrets required: `SERVER_SSH_KEY`, `SERVER_HOST`, `SERVER_USER`, `SERVER_DEPLOY_PATH` (e.g. `/opt/zhizhu/file-converter`), `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`, `GHCR_PAT` (read:packages), `VAULT_TOKEN`. Environment `production` must exist.
+
+The service is internal only (no auth): the backend calls `http://zhizhu-file-converter:8080` over the `zhizhu_net` Docker network; no Cloudflare Tunnel route.
 
 ## Architecture
 

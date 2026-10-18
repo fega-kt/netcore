@@ -1,0 +1,107 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Không cho hai lần deploy chạy chồng nhau trên cùng server; lần sau chờ lần trước xong
+concurrency:
+  group: deploy-file-converter
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  build-and-push:
+    name: Build & Push
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get git info
+        id: git
+        run: |
+          echo "commit=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          echo "author=$(git log -1 --pretty=%an)" >> $GITHUB_OUTPUT
+          echo "branch=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+          MESSAGE=$(git log -1 --pretty=%B | tr '\n' ' ' | tr -d '"' | sed 's/  */ /g; s/ $//')
+          echo "message=$MESSAGE" >> $GITHUB_OUTPUT
+
+      - name: Login Docker registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:sha-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            GIT_COMMIT=${{ steps.git.outputs.commit }}
+            GIT_AUTHOR=${{ steps.git.outputs.author }}
+            GIT_BRANCH=${{ steps.git.outputs.branch }}
+            GIT_MESSAGE=${{ steps.git.outputs.message }}
+            BUILD_TIME=${{ steps.git.outputs.build_time }}
+
+  deploy:
+    name: Deploy to server
+    needs: build-and-push
+    runs-on: ubuntu-24.04
+    environment: production
+
+    steps:
+      - name: Install cloudflared
+        run: |
+          curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o cloudflared.deb
+          sudo dpkg -i cloudflared.deb
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          cat >> ~/.ssh/config <<EOF
+          Host ${{ secrets.SERVER_HOST }}
+            ProxyCommand cloudflared access ssh --hostname %h
+            StrictHostKeyChecking no
+          EOF
+
+      # Trên server: thư mục file-converter của repo zhizhu-server-deploy (vd /opt/zhizhu/file-converter).
+      # up.sh lấy secret từ Vault → ghi .env → pull image → recreate container
+      - name: Deploy
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          APP_IMAGE: ${{ env.IMAGE }}:sha-${{ github.sha }}
+        run: |
+          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} bash <<ENDSSH
+            # Dừng ngay khi login/up.sh lỗi, để job báo fail đúng thay vì chỉ lấy exit code của lệnh cuối
+            set -e
+            echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+            cd ${{ secrets.SERVER_DEPLOY_PATH }}
+            VAULT_TOKEN="${{ secrets.VAULT_TOKEN }}" APP_IMAGE="$APP_IMAGE" bash up.sh
+            # Dọn image cũ là phụ, không để lỗi làm fail deploy
+            docker image prune -f || echo "Skip image prune (another prune may be running)"
+          ENDSSH
