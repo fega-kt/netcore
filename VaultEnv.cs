@@ -71,9 +71,12 @@ public static class VaultEnv
             if (token is null) return;
 
             var secrets = FetchSecrets(http, addr, secretPath, token);
-            if (secrets is null && Environment.GetEnvironmentVariable("VAULT_TOKEN") is null && VaultTokenCache.Get(addr) is not null)
+            // Chỉ khi Vault xác nhận token đã lưu không còn dùng được (hết hạn / bị thu hồi) mới bỏ token và đăng nhập lại.
+            // Sai đường dẫn / thiếu quyền thì giữ token (chạy lại không phải nhập lại) và báo lỗi bên dưới
+            if (secrets is null && Environment.GetEnvironmentVariable("VAULT_TOKEN") is null && VaultTokenCache.Get(addr) is not null
+                && !IsTokenValid(http, addr, token))
             {
-                // Token đã lưu hết hạn / bị thu hồi: đăng nhập lại một lần
+                Error("Token Vault đã hết hạn — đăng nhập lại");
                 VaultTokenCache.Remove(addr);
                 token = ResolveToken(http, addr);
                 if (token is not null) secrets = FetchSecrets(http, addr, secretPath, token);
@@ -136,6 +139,15 @@ public static class VaultEnv
         return token;
     }
 
+    /// <summary>Token còn dùng được không (auth/token/lookup-self)</summary>
+    private static bool IsTokenValid(HttpClient http, string addr, string token)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{addr}/v1/auth/token/lookup-self");
+        request.Headers.Add("X-Vault-Token", token);
+        using var res = http.Send(request);
+        return res.IsSuccessStatusCode;
+    }
+
     /// <summary>Dán token có sẵn; kiểm tra token còn dùng được (auth/token/lookup-self) trước khi lưu</summary>
     private static string? PromptToken(HttpClient http, string addr)
     {
@@ -147,11 +159,8 @@ public static class VaultEnv
             return null;
         }
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"{addr}/v1/auth/token/lookup-self");
-        request.Headers.Add("X-Vault-Token", token);
-        using var res = http.Send(request);
-        if (res.IsSuccessStatusCode) return token;
-        Error($"Token không hợp lệ hoặc đã hết hạn ({(int)res.StatusCode})");
+        if (IsTokenValid(http, addr, token)) return token;
+        Error("Token không hợp lệ hoặc đã hết hạn");
         return null;
     }
 
