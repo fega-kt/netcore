@@ -11,3 +11,4 @@ docker-compose*.yml
 
 # Secrets local
 .env
+.vault.json

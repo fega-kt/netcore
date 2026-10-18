@@ -2,6 +2,6 @@
   "addr": "https://vault.zhizhu.online",
   "kv": 2,
   "envs": {
-    "file-converter-dev": "secret/data/file-converter-dev"
+    "file-converter-dev": "secret/data/file-converter"
   }
 }
