@@ -8,3 +8,6 @@ obj/
 **/*.md
 Dockerfile
 docker-compose*.yml
+
+# Secrets local
+.env
