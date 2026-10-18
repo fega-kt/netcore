@@ -11,32 +11,46 @@ namespace FileConverter;
 /// Token Vault lấy theo thứ tự: biến <c>VAULT_TOKEN</c> → token đã giữ trong RAM (VaultTokenCache, mất khi đăng xuất / tắt máy)
 /// → hỏi trên console (dán token, hoặc đăng nhập userpass). Không bao giờ ghi token xuống đĩa.
 ///
+/// Lấy được thì in dòng màu xanh; không lấy được (cấu hình sai, không có token, sai đường dẫn, không kết nối được) thì in
+/// dòng màu đỏ và chạy tiếp — biến có thể đã có từ file .env (DotNetEnv).
 /// Trên server không có <c>.vault.json</c> trong image (đã loại ở .dockerignore) nên bỏ qua; secret do up.sh ghi ra .env.
 /// Biến đã có sẵn trong môi trường không bị ghi đè.
 /// </summary>
 public static class VaultEnv
 {
     private const string ConfigFile = ".vault.json";
+    private const string Green = "[32m";
+    private const string Red = "[31m";
+    private const string Reset = "[0m";
 
     private sealed record VaultConfig(string? Addr, Dictionary<string, string>? Envs);
 
     public static void Load()
     {
-        if (!File.Exists(ConfigFile)) return;
+        // Chỉ chạy local (launchSettings đặt Development). Server / Docker chạy Production: secret lấy từ .env do up.sh ghi,
+        // không gọi Vault — kể cả khi .vault.json lỡ lọt vào image
+        if (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") != "Development") return;
+
+        var configPath = FindConfigFile();
+        if (configPath is null)
+        {
+            Error($"Không tìm thấy {ConfigFile} (thư mục hiện tại: {Directory.GetCurrentDirectory()}) — bỏ qua Vault");
+            return;
+        }
 
         VaultConfig? config;
         try
         {
-            config = JsonSerializer.Deserialize<VaultConfig>(File.ReadAllText(ConfigFile), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            config = JsonSerializer.Deserialize<VaultConfig>(File.ReadAllText(configPath), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         }
         catch (JsonException e)
         {
-            Warn($"{ConfigFile} không phải JSON hợp lệ ({e.Message}) — bỏ qua Vault");
+            Error($"{configPath} không phải JSON hợp lệ: {e.Message}");
             return;
         }
         if (string.IsNullOrWhiteSpace(config?.Addr) || config.Envs is not { Count: > 0 })
         {
-            Warn($"{ConfigFile} thiếu \"addr\" hoặc \"envs\" — bỏ qua Vault");
+            Error($"{configPath} thiếu \"addr\" hoặc \"envs\"");
             return;
         }
 
@@ -44,7 +58,7 @@ public static class VaultEnv
         if (string.IsNullOrEmpty(envName) && config.Envs.Count == 1) envName = config.Envs.Keys.First();
         if (string.IsNullOrEmpty(envName) || !config.Envs.TryGetValue(envName, out var secretPath))
         {
-            Warn($"Đặt VAULT_ENV là một trong: {string.Join(", ", config.Envs.Keys)} — bỏ qua Vault");
+            Error($"VAULT_ENV phải là một trong: {string.Join(", ", config.Envs.Keys)}");
             return;
         }
 
@@ -52,6 +66,7 @@ public static class VaultEnv
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
         try
         {
+            // ResolveToken tự log lý do khi không có token
             var token = ResolveToken(http, addr);
             if (token is null) return;
 
@@ -65,7 +80,7 @@ public static class VaultEnv
             }
             if (secrets is null)
             {
-                Warn($"Không đọc được secret {secretPath} (token / quyền / đường dẫn?)");
+                Error($"Không đọc được secret {secretPath} từ {addr} (sai đường dẫn, hoặc token không có quyền đọc)");
                 return;
             }
 
@@ -76,12 +91,28 @@ public static class VaultEnv
                 Environment.SetEnvironmentVariable(key, value);
                 loaded++;
             }
-            Console.WriteLine($"[vault] {loaded} biến từ {secretPath} ({envName})");
+            Console.WriteLine($"{Green}[vault] {loaded} biến từ {secretPath} ({envName}){Reset}");
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException)
         {
-            Warn($"Không kết nối được Vault {addr}: {e.Message}");
+            Error($"Không kết nối được Vault {addr}: {e.Message}");
         }
+    }
+
+    /// <summary>
+    /// .vault.json ở thư mục hiện tại, hoặc ở thư mục project: dò ngược lên từ thư mục chứa file build (bin/Debug/net8.0)
+    /// — chạy từ IDE / dotnet run --project thì thư mục hiện tại có thể không phải thư mục project.
+    /// </summary>
+    private static string? FindConfigFile()
+    {
+        var current = Path.Combine(Directory.GetCurrentDirectory(), ConfigFile);
+        if (File.Exists(current)) return current;
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
+        {
+            var candidate = Path.Combine(dir.FullName, ConfigFile);
+            if (File.Exists(candidate)) return candidate;
+        }
+        return null;
     }
 
     private static string? ResolveToken(HttpClient http, string addr)
@@ -91,16 +122,17 @@ public static class VaultEnv
         var cached = VaultTokenCache.Get(addr);
         if (!string.IsNullOrEmpty(cached)) return cached;
 
+        // Không có console để hỏi (chạy trong IDE / bị chuyển hướng input): để Load báo lỗi
         if (Console.IsInputRedirected)
         {
-            Warn("Chưa có token Vault: đặt VAULT_TOKEN, hoặc chạy trong console để đăng nhập");
+            Error("Chưa có token Vault và không có console để đăng nhập (chạy trong IDE / input bị chuyển hướng): đặt VAULT_TOKEN, hoặc chạy bằng terminal");
             return null;
         }
         Console.WriteLine("[vault] Đăng nhập Vault bằng: 1) Token  2) Userpass");
         Console.Write("[vault] Chọn (1/2): ");
         token = Console.ReadLine()?.Trim() == "1" ? PromptToken(http, addr) : LoginUserpass(http, addr);
         // Giữ trong RAM để lần chạy sau (dotnet watch khởi động lại) không phải hỏi; tắt máy / đăng xuất là mất
-        if (token is not null && !VaultTokenCache.Set(addr, token)) Warn("Máy này không giữ được token trong RAM — lần sau sẽ hỏi lại");
+        if (token is not null && !VaultTokenCache.Set(addr, token)) Error("Máy này không giữ được token trong RAM — lần sau sẽ hỏi lại");
         return token;
     }
 
@@ -109,13 +141,17 @@ public static class VaultEnv
     {
         Console.Write("[vault] Token: ");
         var token = ReadPassword().Trim();
-        if (string.IsNullOrEmpty(token)) return null;
+        if (string.IsNullOrEmpty(token))
+        {
+            Error("Chưa nhập token — bỏ qua Vault");
+            return null;
+        }
 
         using var request = new HttpRequestMessage(HttpMethod.Get, $"{addr}/v1/auth/token/lookup-self");
         request.Headers.Add("X-Vault-Token", token);
         using var res = http.Send(request);
         if (res.IsSuccessStatusCode) return token;
-        Warn($"Token không hợp lệ hoặc đã hết hạn ({(int)res.StatusCode})");
+        Error($"Token không hợp lệ hoặc đã hết hạn ({(int)res.StatusCode})");
         return null;
     }
 
@@ -125,12 +161,16 @@ public static class VaultEnv
         var username = Console.ReadLine()?.Trim();
         Console.Write("[vault] Password: ");
         var password = ReadPassword();
-        if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password)) return null;
+        if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+        {
+            Error("Chưa nhập username / password — bỏ qua Vault");
+            return null;
+        }
 
         var res = http.PostAsJsonAsync($"{addr}/v1/auth/userpass/login/{Uri.EscapeDataString(username)}", new { password }).GetAwaiter().GetResult();
         if (!res.IsSuccessStatusCode)
         {
-            Warn($"Đăng nhập Vault thất bại ({(int)res.StatusCode})");
+            Error($"Đăng nhập Vault thất bại ({(int)res.StatusCode})");
             return null;
         }
         using var doc = JsonDocument.Parse(res.Content.ReadAsStringAsync().GetAwaiter().GetResult());
@@ -165,5 +205,5 @@ public static class VaultEnv
         return new string(chars.ToArray());
     }
 
-    private static void Warn(string message) => Console.WriteLine($"[vault] {message}");
+    private static void Error(string message) => Console.WriteLine($"{Red}[vault] {message}{Reset}");
 }

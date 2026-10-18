@@ -31,9 +31,9 @@ Local secrets come from Vault directly — `VaultEnv.Load()` (called at the top 
 dotnet run --launch-profile http     # or: dotnet watch run --launch-profile http → http://localhost:5035/swagger
 ```
 
-Vault token, in order: `VAULT_TOKEN` env var → token kept in RAM by `VaultTokenCache` → interactive prompt on the console (paste a token, or log in with userpass). The token is never written to disk: on Windows it lives in a volatile registry key (`HKCU\Software\Zhizhu\VaultTokens`, memory only), on Linux in `$XDG_RUNTIME_DIR` (tmpfs) — both are gone after logoff / reboot, like vault-start; elsewhere it is not cached. Variables already in the environment (or loaded from a local `.env` by DotNetEnv) are not overwritten. If Vault is unreachable the app still starts and logs why.
+Vault token, in order: `VAULT_TOKEN` env var → token kept in RAM by `VaultTokenCache` → interactive prompt on the console (paste a token, or log in with userpass). The token is never written to disk: on Windows it lives in a volatile registry key (`HKCU\Software\Zhizhu\VaultTokens`, memory only), on Linux in `$XDG_RUNTIME_DIR` (tmpfs) — both are gone after logoff / reboot, like vault-start; elsewhere it is not cached. Variables already in the environment (or loaded from a local `.env` by DotNetEnv) are not overwritten. Success is logged in green; any failure (missing or bad `.vault.json`, no token, wrong path, Vault unreachable) is logged in red and the app keeps running — the values may still come from a local `.env`.
 
-On the server the image has no `.vault.json` (excluded in `.dockerignore`), so `VaultEnv` is a no-op and secrets come from the `.env` written by `up.sh`. Without Vault access locally: `cp .env.example .env` and fill in the key by hand.
+`VaultEnv` only runs when `ASPNETCORE_ENVIRONMENT=Development` (set by `launchSettings.json`); the container runs as Production and `.vault.json` is excluded in `.dockerignore`, so on the server it is a no-op and secrets come from the `.env` written by `up.sh`. Without Vault access locally: `cp .env.example .env` and fill in the key by hand.
 
 ## Deploy
 
