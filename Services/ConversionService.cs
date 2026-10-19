@@ -128,6 +128,57 @@ public class ConversionService(ILogger<ConversionService> logger) : IConversionS
         return new ConversionResult { Success = true, PdfBytes = ms.ToArray(), FileName = file.FileName };
     }
 
+    // Font Microsoft không có trong container Linux → font cùng số đo (chữ không xô dòng) đã cài trong image.
+    // Không khai báo thì Syncfusion tự chọn một font thiếu chữ tiếng Việt (mất ơ, ư, chữ dính nhau)
+    private static readonly Dictionary<string, string> FontSubstitutes = BuildFontSubstitutes(
+        // Có chân (serif)
+        ("Liberation Serif", ["Times New Roman", "Times"]),
+        ("Caladea", ["Cambria"]),
+        ("P052", ["Palatino Linotype", "Palatino", "Book Antiqua"]),
+        ("C059", ["Century Schoolbook", "Century"]),
+        ("URW Bookman", ["Bookman Old Style", "Bookman"]),
+        ("Noto Serif", ["Georgia", "Garamond", "Constantia", "Cambria Math"]),
+        // Không chân (sans)
+        ("Liberation Sans", ["Arial", "Helvetica", "Arial Black", "Microsoft Sans Serif"]),
+        ("Liberation Sans Narrow", ["Arial Narrow"]),
+        ("Carlito", ["Calibri", "Calibri Light"]),
+        ("URW Gothic", ["Century Gothic"]),
+        ("DejaVu Sans", ["Verdana", "Tahoma", "Trebuchet MS", "Lucida Sans Unicode", "Arial Unicode MS"]),
+        ("Noto Sans", ["Segoe UI", "Aptos", "Candara", "Corbel", "Franklin Gothic Medium"]),
+        // Đơn cách (mono)
+        ("Liberation Mono", ["Courier New", "Courier", "Consolas", "Lucida Console"]),
+        // Chữ viết tay, ký hiệu
+        ("Z003", ["Monotype Corsiva"]),
+        ("Standard Symbols PS", ["Symbol"]),
+        // Trung / Nhật / Hàn
+        ("Noto Serif CJK SC", ["SimSun", "宋体", "NSimSun", "新宋体", "MingLiU", "PMingLiU", "新細明體", "MS Mincho", "MS PMincho", "Batang"]),
+        ("Noto Sans CJK SC", ["SimHei", "黑体", "Microsoft YaHei", "微软雅黑", "Microsoft JhengHei", "MS Gothic", "MS PGothic", "Meiryo", "Yu Gothic", "Malgun Gothic", "Gulim", "Dotum"]));
+
+    /// <summary>Font lạ không có trong bảng: theo tên đoán có chân hay không, còn lại dùng Noto Sans (đủ chữ tiếng Việt)</summary>
+    private static string SubstituteFor(string fontName) =>
+        FontSubstitutes.TryGetValue(fontName, out var name) ? name
+        : fontName.Contains("Times", StringComparison.OrdinalIgnoreCase) || fontName.Contains("Serif", StringComparison.OrdinalIgnoreCase) && !fontName.Contains("Sans", StringComparison.OrdinalIgnoreCase) ? "Liberation Serif"
+        : fontName.Contains("Mono", StringComparison.OrdinalIgnoreCase) || fontName.Contains("Courier", StringComparison.OrdinalIgnoreCase) ? "Liberation Mono"
+        : "Noto Sans";
+
+    private static Dictionary<string, string> BuildFontSubstitutes(params (string Substitute, string[] Originals)[] groups) =>
+        groups.SelectMany(group => group.Originals.Select(original => (original, group.Substitute)))
+            .ToDictionary(pair => pair.original, pair => pair.Substitute, StringComparer.OrdinalIgnoreCase);
+
+    private static void UseLinuxFonts(Syncfusion.DocIO.DLS.FontSettings settings)
+    {
+        settings.SubstituteFont += (_, args) => args.AlternateFontName = SubstituteFor(args.OriginalFontName);
+        // Ký tự font đang dùng không có thì lấy từ font có đủ chữ
+        void Fallback(uint start, uint end, string font) => settings.FallbackFonts.Add(new Syncfusion.Office.FallbackFont(start, end, font));
+        Fallback(0x0100, 0x024F, "Noto Sans"); // Latin mở rộng: ă, đ, ơ, ư…
+        Fallback(0x0300, 0x036F, "Noto Sans"); // dấu tổ hợp
+        Fallback(0x1E00, 0x1EFF, "Noto Sans"); // Latin mở rộng bổ sung: ạ, ế, ợ…
+        Fallback(0x3000, 0x30FF, "Noto Sans CJK SC"); // dấu câu CJK, kana Nhật
+        Fallback(0x4E00, 0x9FFF, "Noto Sans CJK SC"); // chữ Hán
+        Fallback(0xAC00, 0xD7AF, "Noto Sans CJK SC"); // chữ Hàn
+        Fallback(0xFF00, 0xFFEF, "Noto Sans CJK SC"); // ký tự toàn độ rộng
+    }
+
     private async Task<ConversionResult> ConvertWordAsync(IFormFile file, CancellationToken ct)
     {
         try
@@ -137,6 +188,7 @@ public class ConversionService(ILogger<ConversionService> logger) : IConversionS
             inputMs.Position = 0;
 
             using var doc = new WordDocument(inputMs, Syncfusion.DocIO.FormatType.Automatic);
+            UseLinuxFonts(doc.FontSettings);
             using var renderer = new DocIORenderer();
             using var pdf = renderer.ConvertToPDF(doc);
             using var outputMs = new MemoryStream();
