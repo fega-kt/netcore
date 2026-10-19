@@ -17,8 +17,8 @@
     <PackageReference Include="Syncfusion.DocIORenderer.Net.Core" Version="33.2.6" />
     <PackageReference Include="Syncfusion.PresentationRenderer.Net.Core" Version="33.2.6" />
     <PackageReference Include="Syncfusion.XlsIORenderer.Net.Core" Version="33.2.6" />
-    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="4.150.1" />
-    <PackageReference Include="HarfBuzzSharp.NativeAssets.Linux" Version="14.2.1.1" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="3.119.1" />
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.Linux" Version="8.3.1.1" />
   </ItemGroup>
 
 </Project>
