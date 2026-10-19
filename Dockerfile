@@ -35,6 +35,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     ca-certificates \
     fonts-liberation \
+    fonts-crosextra-carlito \
+    fonts-crosextra-caladea \
+    fonts-urw-base35 \
+    fonts-noto-cjk \
     fonts-dejavu \
     fonts-noto \
     fontconfig \
