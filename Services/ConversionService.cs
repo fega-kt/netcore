@@ -130,26 +130,21 @@ public class ConversionService(ILogger<ConversionService> logger) : IConversionS
 
     // Font Microsoft không có trong container Linux → font cùng số đo (chữ không xô dòng) đã cài trong image.
     // Không khai báo thì Syncfusion tự chọn một font thiếu chữ tiếng Việt (mất ơ, ư, chữ dính nhau)
+    // Chỉ dùng font đủ chữ tiếng Việt: Liberation 2.x (gói fonts-liberation2, KHÔNG phải fonts-liberation 1.07),
+    // Carlito, DejaVu, Noto. Caladea và bộ URW (P052, C059, URW Bookman/Gothic…) thiếu ả, ạ, ế… nên không dùng:
+    // ký tự thiếu bị vẽ bằng font khác cỡ chữ → chữ dính, hở, dấu lệch
     private static readonly Dictionary<string, string> FontSubstitutes = BuildFontSubstitutes(
         // Có chân (serif)
         ("Liberation Serif", ["Times New Roman", "Times"]),
-        ("Caladea", ["Cambria"]),
-        ("P052", ["Palatino Linotype", "Palatino", "Book Antiqua"]),
-        ("C059", ["Century Schoolbook", "Century"]),
-        ("URW Bookman", ["Bookman Old Style", "Bookman"]),
-        ("Noto Serif", ["Georgia", "Garamond", "Constantia", "Cambria Math"]),
+        ("Noto Serif", ["Cambria", "Cambria Math", "Georgia", "Garamond", "Constantia", "Palatino Linotype", "Palatino", "Book Antiqua",
+            "Century Schoolbook", "Century", "Bookman Old Style", "Bookman", "Monotype Corsiva"]),
         // Không chân (sans)
-        ("Liberation Sans", ["Arial", "Helvetica", "Arial Black", "Microsoft Sans Serif"]),
-        ("Liberation Sans Narrow", ["Arial Narrow"]),
+        ("Liberation Sans", ["Arial", "Helvetica", "Arial Black", "Arial Narrow", "Microsoft Sans Serif"]),
         ("Carlito", ["Calibri", "Calibri Light"]),
-        ("URW Gothic", ["Century Gothic"]),
         ("DejaVu Sans", ["Verdana", "Tahoma", "Trebuchet MS", "Lucida Sans Unicode", "Arial Unicode MS"]),
-        ("Noto Sans", ["Segoe UI", "Aptos", "Candara", "Corbel", "Franklin Gothic Medium"]),
+        ("Noto Sans", ["Segoe UI", "Aptos", "Aptos Display", "Aptos Narrow", "Century Gothic", "Candara", "Corbel", "Franklin Gothic Medium"]),
         // Đơn cách (mono)
         ("Liberation Mono", ["Courier New", "Courier", "Consolas", "Lucida Console"]),
-        // Chữ viết tay, ký hiệu
-        ("Z003", ["Monotype Corsiva"]),
-        ("Standard Symbols PS", ["Symbol"]),
         // Trung / Nhật / Hàn
         ("Noto Serif CJK SC", ["SimSun", "宋体", "NSimSun", "新宋体", "MingLiU", "PMingLiU", "新細明體", "MS Mincho", "MS PMincho", "Batang"]),
         ("Noto Sans CJK SC", ["SimHei", "黑体", "Microsoft YaHei", "微软雅黑", "Microsoft JhengHei", "MS Gothic", "MS PGothic", "Meiryo", "Yu Gothic", "Malgun Gothic", "Gulim", "Dotum"]));
@@ -189,7 +184,8 @@ public class ConversionService(ILogger<ConversionService> logger) : IConversionS
 
             using var doc = new WordDocument(inputMs, Syncfusion.DocIO.FormatType.Automatic);
             UseLinuxFonts(doc.FontSettings);
-            using var renderer = new DocIORenderer();
+            // Nhúng font vào PDF: không nhúng thì trình xem tự thay font của nó → chữ lệch, hở
+            using var renderer = new DocIORenderer { Settings = { EmbedFonts = true } };
             using var pdf = renderer.ConvertToPDF(doc);
             using var outputMs = new MemoryStream();
             pdf.Save(outputMs);
