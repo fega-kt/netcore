@@ -59,6 +59,9 @@ public class ConversionService(ILogger<ConversionService> logger) : IConversionS
         _ => false
     };
 
+    /// <summary>Giới hạn số lượt chuyển chạy cùng lúc (Syncfusion dựng cả tài liệu trong RAM); lượt sau xếp hàng chờ</summary>
+    private static readonly SemaphoreSlim ConversionGate = new(ConverterLimits.MaxConcurrentConversions);
+
     public async Task<ConversionResult> ConvertToPdfAsync(IFormFile file, CancellationToken ct = default)
     {
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
@@ -70,6 +73,19 @@ public class ConversionService(ILogger<ConversionService> logger) : IConversionS
             return new ConversionResult { Success = false, ErrorMessage = $"File content does not match extension '{ext}'." };
         }
 
+        await ConversionGate.WaitAsync(ct);
+        try
+        {
+            return await ConvertGatedAsync(file, ext, ct);
+        }
+        finally
+        {
+            ConversionGate.Release();
+        }
+    }
+
+    private async Task<ConversionResult> ConvertGatedAsync(IFormFile file, string ext, CancellationToken ct)
+    {
         if (ext == ".pdf")
             return await PassThroughAsync(file, ct);
 
@@ -123,9 +139,33 @@ public class ConversionService(ILogger<ConversionService> logger) : IConversionS
 
     private static async Task<ConversionResult> PassThroughAsync(IFormFile file, CancellationToken ct)
     {
-        using var ms = new MemoryStream();
-        await file.CopyToAsync(ms, ct);
-        return new ConversionResult { Success = true, PdfBytes = ms.ToArray(), FileName = file.FileName };
+        var path = NewTempPdfPath();
+        await using (var output = File.Create(path))
+            await file.CopyToAsync(output, ct);
+        return new ConversionResult { Success = true, PdfPath = path, FileName = file.FileName };
+    }
+
+    /// <summary>
+    /// Tệp lớn không giữ trong RAM: đầu vào đọc thẳng từ tệp tạm ASP.NET đã ghi khi nhận multipart,
+    /// PDF ghi ra tệp tạm rồi controller trả dạng luồng (xoá khi gửi xong)
+    /// </summary>
+    private static string NewTempPdfPath() => Path.Combine(Path.GetTempPath(), $"fc-{Guid.NewGuid():N}.pdf");
+
+    /// <summary>Ghi PDF ra tệp tạm; lỗi giữa chừng thì xoá tệp dở</summary>
+    private static string SavePdfToTemp(Action<Stream> save)
+    {
+        var path = NewTempPdfPath();
+        try
+        {
+            using var output = File.Create(path);
+            save(output);
+            return path;
+        }
+        catch
+        {
+            File.Delete(path);
+            throw;
+        }
     }
 
     // Font Microsoft không có trong container Linux → font cùng số đo (chữ không xô dòng) đã cài trong image.
@@ -178,19 +218,14 @@ public class ConversionService(ILogger<ConversionService> logger) : IConversionS
     {
         try
         {
-            using var inputMs = new MemoryStream();
-            await file.CopyToAsync(inputMs, ct);
-            inputMs.Position = 0;
-
-            using var doc = new WordDocument(inputMs, Syncfusion.DocIO.FormatType.Automatic);
+            await using var input = file.OpenReadStream();
+            using var doc = new WordDocument(input, Syncfusion.DocIO.FormatType.Automatic);
             UseLinuxFonts(doc.FontSettings);
             // Nhúng font vào PDF: không nhúng thì trình xem tự thay font của nó → chữ lệch, hở
             using var renderer = new DocIORenderer { Settings = { EmbedFonts = true } };
             using var pdf = renderer.ConvertToPDF(doc);
-            using var outputMs = new MemoryStream();
-            pdf.Save(outputMs);
 
-            return Success(file, outputMs);
+            return Success(file, SavePdfToTemp(pdf.Save));
         }
         catch (Exception ex)
         {
@@ -203,14 +238,11 @@ public class ConversionService(ILogger<ConversionService> logger) : IConversionS
     {
         try
         {
-            using var inputMs = new MemoryStream();
-            await file.CopyToAsync(inputMs, ct);
-            inputMs.Position = 0;
-
+            await using var input = file.OpenReadStream();
             using var engine = new ExcelEngine();
             var application = engine.Excel;
             application.DefaultVersion = ExcelVersion.Xlsx;
-            var workbook = application.Workbooks.Open(inputMs);
+            var workbook = application.Workbooks.Open(input);
             logger.LogInformation("Excel opened: {Sheets} sheets, {Rows} rows (sheet 1)", workbook.Worksheets.Count, workbook.Worksheets[0].UsedRange.LastRow);
 
             foreach (var sheet in workbook.Worksheets)
@@ -218,10 +250,8 @@ public class ConversionService(ILogger<ConversionService> logger) : IConversionS
 
             var renderer = new XlsIORenderer();
             using var pdf = renderer.ConvertToPDF(workbook);
-            using var outputMs = new MemoryStream();
-            pdf.Save(outputMs);
 
-            return Success(file, outputMs);
+            return Success(file, SavePdfToTemp(pdf.Save));
         }
         catch (Exception ex)
         {
@@ -234,16 +264,11 @@ public class ConversionService(ILogger<ConversionService> logger) : IConversionS
     {
         try
         {
-            using var inputMs = new MemoryStream();
-            await file.CopyToAsync(inputMs, ct);
-            inputMs.Position = 0;
-
-            using var presentation = Presentation.Open(inputMs);
+            await using var input = file.OpenReadStream();
+            using var presentation = Presentation.Open(input);
             using var pdf = PresentationToPdfConverter.Convert(presentation);
-            using var outputMs = new MemoryStream();
-            pdf.Save(outputMs);
 
-            return Success(file, outputMs);
+            return Success(file, SavePdfToTemp(pdf.Save));
         }
         catch (Exception ex)
         {
@@ -256,21 +281,22 @@ public class ConversionService(ILogger<ConversionService> logger) : IConversionS
     {
         try
         {
+            // Ảnh: iText cần cả mảng byte của ảnh
             using var inputMs = new MemoryStream();
             await file.CopyToAsync(inputMs, ct);
 
-            using var outputMs = new MemoryStream();
-            using (var writer = new PdfWriter(outputMs))
+            var path = SavePdfToTemp(output =>
             {
+                using var writer = new PdfWriter(output);
                 writer.SetCloseStream(false);
                 using var pdf = new PdfDocument(writer);
                 using var doc = new iText.Layout.Document(pdf);
                 var imageData = ImageDataFactory.Create(inputMs.ToArray());
                 var image = new iText.Layout.Element.Image(imageData).SetAutoScale(true);
                 doc.Add(image);
-            }
+            });
 
-            return Success(file, outputMs);
+            return Success(file, path);
         }
         catch (Exception ex)
         {
@@ -279,10 +305,10 @@ public class ConversionService(ILogger<ConversionService> logger) : IConversionS
         }
     }
 
-    private static ConversionResult Success(IFormFile file, MemoryStream ms) => new()
+    private static ConversionResult Success(IFormFile file, string pdfPath) => new()
     {
         Success = true,
-        PdfBytes = ms.ToArray(),
+        PdfPath = pdfPath,
         FileName = Path.GetFileNameWithoutExtension(file.FileName) + ".pdf"
     };
 }

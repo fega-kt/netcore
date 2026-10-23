@@ -25,6 +25,10 @@ No test project currently exists.
 Required env vars:
 - `SYNCFUSION_LICENSE_KEY` — Syncfusion Community license key generated for the library version in use (33.x). Missing / wrong key → PDFs get a watermark.
 
+Optional env vars (`ConverterLimits.cs`):
+- `MAX_FILE_MB` (default 200) — largest file accepted; keep it equal to the backend upload cap. Kestrel and the multipart form reader allow `MAX_FILE_MB` + 10 MB for the multipart envelope. Larger requests get 413 straight from the `Content-Length` header (before the body is read).
+- `MAX_CONCURRENT_CONVERSIONS` (default 4) — conversions running at once; more requests wait in line. Syncfusion builds the whole document in memory, so this bounds RAM use.
+
 Local secrets come from Vault directly — `VaultEnv.Load()` (called at the top of `Program.cs`) reads `.vault.json` (committed, same format as the backend), picks the env from `VAULT_ENV` (set to `file-converter-dev` in `launchSettings.json`) and puts the secrets into the process environment. No `.env` is written, no Node tooling needed:
 
 ```bash
@@ -50,7 +54,9 @@ Single ASP.NET Core 8 Web API project. No layers beyond controller → service.
 **Request flow:**
 1. `ConvertController` receives file via `POST /api/convert/file` (multipart) or HTML string via `POST /api/convert/html`
 2. `ConversionService.ConvertToPdfAsync` reads magic bytes to validate the file matches its declared extension, then routes to the appropriate private converter method
-3. Each converter returns `ConversionResult` with `PdfBytes` — the controller streams it back as `application/pdf`
+3. Each converter returns `ConversionResult` with `PdfPath` (temp file) — the controller streams it back as `application/pdf` and the file is deleted when the response closes (`FileOptions.DeleteOnClose`). Only HTML conversion still returns `PdfBytes` (in memory).
+
+**Large files stay off the heap** — ASP.NET already buffers uploaded multipart files above 64 KB to a temp file; converters open that stream directly (`file.OpenReadStream()`, no `MemoryStream` copy) and write the PDF to a temp file. Syncfusion still loads the document model into RAM; that part cannot be avoided, hence the concurrency limit.
 
 **Conversion backends by file type:**
 | Format | Library |

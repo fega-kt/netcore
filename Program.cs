@@ -1,6 +1,7 @@
 using DotNetEnv;
 using FileConverter;
 using FileConverter.Services;
+using Microsoft.AspNetCore.Http.Features;
 using Syncfusion.Licensing;
 
 Env.Load();
@@ -22,9 +23,14 @@ builder.Services.AddSwaggerGen(c =>
 
 builder.Services.AddScoped<IConversionService, ConversionService>();
 
+// Request = tệp + phần bọc multipart: cả Kestrel lẫn bộ đọc form (mặc định 128 MB) phải nhận được tệp sát trần MAX_FILE_MB
 builder.WebHost.ConfigureKestrel(opts =>
 {
-    opts.Limits.MaxRequestBodySize = 100 * 1024 * 1024;
+    opts.Limits.MaxRequestBodySize = ConverterLimits.MaxRequestBytes;
+});
+builder.Services.Configure<FormOptions>(opts =>
+{
+    opts.MultipartBodyLengthLimit = ConverterLimits.MaxRequestBytes;
 });
 
 var app = builder.Build();
@@ -47,6 +53,18 @@ app.Use(async (ctx, next) =>
     var logger = ctx.RequestServices.GetRequiredService<ILogger<Program>>();
     logger.LogInformation("{Method} {Path} — ip={IP} ua={UA}",
         ctx.Request.Method, ctx.Request.Path, clientIp, ua);
+    await next();
+});
+
+// Tệp quá lớn: báo 413 ngay theo Content-Length, không đợi nhận hết body rồi mới lỗi đọc form (400 chung chung)
+app.Use(async (ctx, next) =>
+{
+    if (ctx.Request.ContentLength > ConverterLimits.MaxRequestBytes)
+    {
+        ctx.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+        await ctx.Response.WriteAsJsonAsync(new { error = $"File exceeds maximum allowed size of {ConverterLimits.MaxFileBytes / 1024 / 1024} MB." });
+        return;
+    }
     await next();
 });
 
